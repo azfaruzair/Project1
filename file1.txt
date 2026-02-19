@@ -1,2 +1,53 @@
-This is file for test 
+#!/bin/bash
+
+# Ensure both arguments are provided
+if [ -z "$1" ] || [ -z "$2" ]; then
+  echo "Usage: ./create-vault-secret.sh <secret_name> <path_to_json_file>"
+  echo "Example: ./create-vault-secret.sh my-new-secret payload.json"
+  exit 1
+fi
+
+SECRET_NAME=$1
+JSON_FILE=$2
+
+echo "Step 1: Requesting temporary JWT from Kubernetes..."
+SA_JWT_token=$(kubectl create token cib-gps-platform-observability -n cib-gps-platform-observability-preprod 2>/dev/null)
+
+if [ -z "$SA_JWT_token" ]; then
+  echo "Error: Failed to get Kubernetes token. Check your cluster connection."
+  exit 1
+fi
+
+echo "Step 2: Authenticating with UAT Vault..."
+# We use -s to hide the curl progress bar, storing the JSON response in a variable
+LOGIN_RESPONSE=$(curl -s -X 'POST' \
+  'https://vault-uat.uk.hsbc:8200/v1/auth/kubernetes/wsit_uk-azs-305/login' \
+  -H 'accept: */*' \
+  -H 'Content-Type: application/json' \
+  -H 'X-Vault-Namespace: ITID/12385199_DTPENGG' \
+  -d '{
+  "jwt": "'"$SA_JWT_token"'",
+  "role": "cib-gps-platform-observability-role"
+}')
+
+# Extract the hvs. token directly from the response (using basic grep/cut so it works universally in Git Bash)
+VAULT_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"client_token":"[^"]*"' | cut -d'"' -f4)
+
+if [ -z "$VAULT_TOKEN" ]; then
+  echo "Error: Vault login failed or permission denied."
+  echo "Response: $LOGIN_RESPONSE"
+  exit 1
+fi
+
+echo "Step 3: Writing secret to Vault path -> $SECRET_NAME..."
+# The -d "@$JSON_FILE" flag tells curl to read the payload directly from your file
+curl -X 'POST' \
+  "https://vault-uat.uk.hsbc:8200/v1/secrets/kv_v2/wsit/data/cib-gps-platform-observability-preprod/$SECRET_NAME" \
+  -H 'accept: application/json' \
+  -H "X-Vault-Token: $VAULT_TOKEN" \
+  -H 'X-Vault-Namespace: ITID/12385199_DTPENGG' \
+  -H 'Content-Type: application/json' \
+  -d "@$JSON_FILE"
+
+echo -e "\n\nSecret creation complete!"
 
