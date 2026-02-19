@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "==========================================="
-echo "   Vault Secret Updater (Local Utility)    "
+echo "   Vault Secret Manager (Local Utility)    "
 echo "==========================================="
 echo ""
 
@@ -13,11 +13,20 @@ VAULT_ADDR="https://vault-uat.uk.hsbc:8200"
 VAULT_NS="ITID/12385199_DTPENGG"
 K8S_AUTH_PATH="wsit_uk-azs-305"
 
-# 2. Ask for Secret Name
-read -p "Enter the Secret Name to read/update: " SECRET_NAME
+# 2. Configuration Log
+echo "📍 CURRENT TARGET ENVIRONMENT"
+echo "-------------------------------------------"
+echo "Vault Address:   $VAULT_ADDR"
+echo "Vault Namespace: $VAULT_NS"
+echo "Target Path:     secrets/kv_v2/wsit/data/$TARGET_NS/"
+echo "-------------------------------------------"
 echo ""
 
-# 3. Authenticate to K8s & Vault
+# 3. Ask for Secret Name
+read -p "Enter the Secret Name to read/manage: " SECRET_NAME
+echo ""
+
+# 4. Authenticate to K8s & Vault
 echo "Authenticating..."
 SA_JWT_token=$(kubectl create token "$SA_NAME" -n "$TARGET_NS" 2>/dev/null)
 
@@ -39,9 +48,8 @@ if [ -z "$VAULT_TOKEN" ]; then
   exit 1
 fi
 
-# 4. Read Existing Secret
-echo "Checking for existing secret: $SECRET_NAME..."
-# Using a trick to capture both the JSON body and the HTTP status code
+# 5. Check if Secret Exists
+echo "Checking Vault for: $SECRET_NAME..."
 READ_RESPONSE=$(curl -s -w "\n%{http_code}" -X 'GET' \
   "$VAULT_ADDR/v1/secrets/kv_v2/wsit/data/$TARGET_NS/$SECRET_NAME" \
   -H "X-Vault-Token: $VAULT_TOKEN" \
@@ -50,11 +58,13 @@ READ_RESPONSE=$(curl -s -w "\n%{http_code}" -X 'GET' \
 HTTP_STATUS=$(echo "$READ_RESPONSE" | tail -n1)
 JSON_BODY=$(echo "$READ_RESPONSE" | head -n -1)
 
+DO_WRITE=false
+
+# 6. Logic Flow based on existence
 if [ "$HTTP_STATUS" -eq 200 ]; then
   echo ""
   echo "✅ Secret found! Current values:"
   echo "-------------------------------------------"
-  # Cleanly extracts the "data" block (uses jq if installed, falls back to grep)
   if command -v jq &> /dev/null; then
     echo "$JSON_BODY" | jq '.data.data'
   else
@@ -62,53 +72,59 @@ if [ "$HTTP_STATUS" -eq 200 ]; then
   fi
   echo "-------------------------------------------"
   echo ""
-  
-  # 5. Ask for Update
-  read -p "Do you want to update the values? (y/n): " UPDATE_CHOICE
-  if [[ "$UPDATE_CHOICE" == "y" || "$UPDATE_CHOICE" == "Y" ]]; then
-    read -p "Please provide the JSON payload file name (e.g., data.json): " JSON_FILE
-    
-    if [ ! -f "$JSON_FILE" ]; then
-      echo "❌ Error: File '$JSON_FILE' not found in this directory!"
-      exit 1
-    fi
-    
-    echo ""
-    echo "Overwriting values in Vault..."
-    UPDATE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X 'POST' \
-      "$VAULT_ADDR/v1/secrets/kv_v2/wsit/data/$TARGET_NS/$SECRET_NAME" \
-      -H "X-Vault-Token: $VAULT_TOKEN" \
-      -H "X-Vault-Namespace: $VAULT_NS" \
-      -H 'Content-Type: application/json' \
-      -d "@$JSON_FILE")
-      
-    if [ "$UPDATE_STATUS" -eq 200 ]; then
-      echo "✅ Successfully updated secret!"
-      echo ""
-      echo "-------------------------------------------"
-      echo " 🔐 NEW SECRET VALUES CONFIRMED:"
-      echo "-------------------------------------------"
-      NEW_READ=$(curl -s -X 'GET' \
-        "$VAULT_ADDR/v1/secrets/kv_v2/wsit/data/$TARGET_NS/$SECRET_NAME" \
-        -H "X-Vault-Token: $VAULT_TOKEN" \
-        -H "X-Vault-Namespace: $VAULT_NS")
-        
-      if command -v jq &> /dev/null; then
-        echo "$NEW_READ" | jq '.data.data'
-      else
-        echo "$NEW_READ" | grep -o '"data":{"data":{[^}]*}' || echo "$NEW_READ"
-      fi
-      echo "-------------------------------------------"
-    else
-      echo "❌ Error: Failed to update secret. HTTP Status: $UPDATE_STATUS"
-      exit 1
-    fi
-  else
-    echo "Exiting without making changes."
-  fi
+  read -p "Do you want to UPDATE these values? (y/n): " USER_CHOICE
+  if [[ "$USER_CHOICE" == "y" || "$USER_CHOICE" == "Y" ]]; then DO_WRITE=true; fi
+
 elif [ "$HTTP_STATUS" -eq 404 ]; then
+  echo ""
   echo "⚠️ Secret '$SECRET_NAME' does not exist yet."
+  read -p "Do you want to CREATE it now? (y/n): " USER_CHOICE
+  if [[ "$USER_CHOICE" == "y" || "$USER_CHOICE" == "Y" ]]; then DO_WRITE=true; fi
+
 else
   echo "❌ Error reading secret. HTTP Status: $HTTP_STATUS"
   exit 1
+fi
+
+# 7. The Write & Verify Execution Block
+if [ "$DO_WRITE" = true ]; then
+  echo ""
+  read -p "Please provide the JSON payload file name (e.g., data.json): " JSON_FILE
+  
+  if [ ! -f "$JSON_FILE" ]; then
+    echo "❌ Error: File '$JSON_FILE' not found in this directory!"
+    exit 1
+  fi
+  
+  echo "Writing data to Vault..."
+  WRITE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X 'POST' \
+    "$VAULT_ADDR/v1/secrets/kv_v2/wsit/data/$TARGET_NS/$SECRET_NAME" \
+    -H "X-Vault-Token: $VAULT_TOKEN" \
+    -H "X-Vault-Namespace: $VAULT_NS" \
+    -H 'Content-Type: application/json' \
+    -d "@$JSON_FILE")
+    
+  if [ "$WRITE_STATUS" -eq 200 ]; then
+    echo "✅ Success!"
+    echo ""
+    echo "-------------------------------------------"
+    echo " 🔐 CONFIRMED VALUES IN VAULT:"
+    echo "-------------------------------------------"
+    NEW_READ=$(curl -s -X 'GET' \
+      "$VAULT_ADDR/v1/secrets/kv_v2/wsit/data/$TARGET_NS/$SECRET_NAME" \
+      -H "X-Vault-Token: $VAULT_TOKEN" \
+      -H "X-Vault-Namespace: $VAULT_NS")
+      
+    if command -v jq &> /dev/null; then
+      echo "$NEW_READ" | jq '.data.data'
+    else
+      echo "$NEW_READ" | grep -o '"data":{"data":{[^}]*}' || echo "$NEW_READ"
+    fi
+    echo "-------------------------------------------"
+  else
+    echo "❌ Error: Failed to write secret. HTTP Status: $WRITE_STATUS"
+    exit 1
+  fi
+else
+  echo "Exiting without making changes."
 fi
