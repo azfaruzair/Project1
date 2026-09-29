@@ -1,130 +1,40 @@
-#!/bin/bash
+Using the architecture you just discovered, now create the PayOS documentation/knowledge base.
 
-echo "==========================================="
-echo "   Vault Secret Manager (Local Utility)    "
-echo "==========================================="
-echo ""
+The documentation must be hierarchical rather than one enormous document.
 
-# 1. Hardcoded Variables
-TARGET_NS="cib-gps-platform-observability-preprod"
-SA_NAME="cib-gps-platform-observability"
-VAULT_ROLE="cib-gps-platform-observability-role"
-VAULT_ADDR="https://vault-uat.uk.hsbc:8200"
-VAULT_NS="ITID/12385199_DTPENGG"
-K8S_AUTH_PATH="wsit_uk-azs-305"
+Create a top-level architecture/index document and focused documents for areas such as:
 
-# 2. Configuration Log
-echo "📍 CURRENT TARGET ENVIRONMENT"
-echo "-------------------------------------------"
-echo "Vault Address:   $VAULT_ADDR"
-echo "Vault Namespace: $VAULT_NS"
-echo "Target Path:     secrets/kv_v2/wsit/data/$TARGET_NS/"
-echo "-------------------------------------------"
-echo ""
+- architecture
+- frontend/features
+- APIs
+- backend
+- UI Agent
+- shared library
+- domain concepts
+- data flows
 
-# 3. Ask for Secret Name
-read -p "Enter the Secret Name to read/manage: " SECRET_NAME
-echo ""
+Choose the exact structure based on the actual codebase.
 
-# 4. Authenticate to K8s & Vault
-echo "Authenticating..."
-SA_JWT_token=$(kubectl create token "$SA_NAME" -n "$TARGET_NS" 2>/dev/null)
+The documentation should primarily serve as a navigation map for future AI coding assistants.
 
-if [ -z "$SA_JWT_token" ]; then
-  echo "❌ Error: Failed to get K8s token. Check your cluster connection."
-  exit 1
-fi
+For important relationships, include verified source-code paths:
 
-LOGIN_RESPONSE=$(curl -s -X 'POST' \
-  "$VAULT_ADDR/v1/auth/kubernetes/$K8S_AUTH_PATH/login" \
-  -H "X-Vault-Namespace: $VAULT_NS" \
-  -H 'Content-Type: application/json' \
-  -d "{\"jwt\": \"$SA_JWT_token\", \"role\": \"$VAULT_ROLE\"}")
+Feature → frontend component → API → backend → enrichment/aggregation → data source
 
-VAULT_TOKEN=$(echo "$LOGIN_RESPONSE" | grep -o '"client_token":"[^"]*"' | cut -d'"' -f4)
+Pay particular attention to:
 
-if [ -z "$VAULT_TOKEN" ]; then
-  echo "❌ Error: Vault login failed. Permission denied."
-  exit 1
-fi
+- shared APIs
+- cross-feature dependencies
+- shared models
+- backend enrichment/aggregation
+- UI Agent → backend communication
+- Kubernetes/Kafka data flows
+- "pol-lib-payos-ui" dependencies
 
-# 5. Check if Secret Exists
-echo "Checking Vault for: $SECRET_NAME..."
-READ_RESPONSE=$(curl -s -w "\n%{http_code}" -X 'GET' \
-  "$VAULT_ADDR/v1/secrets/kv_v2/wsit/data/$TARGET_NS/$SECRET_NAME" \
-  -H "X-Vault-Token: $VAULT_TOKEN" \
-  -H "X-Vault-Namespace: $VAULT_NS")
+Do not document every class or method. Focus on architecture, responsibilities, relationships, data flow and code navigation.
 
-HTTP_STATUS=$(echo "$READ_RESPONSE" | tail -n1)
-JSON_BODY=$(echo "$READ_RESPONSE" | head -n -1)
+Do not modify application source code.
 
-DO_WRITE=false
+If something cannot be verified from the codebase, mark it as NEEDS VERIFICATION rather than guessing.
 
-# 6. Logic Flow based on existence
-if [ "$HTTP_STATUS" -eq 200 ]; then
-  echo ""
-  echo "✅ Secret found! Current values:"
-  echo "-------------------------------------------"
-  if command -v jq &> /dev/null; then
-    echo "$JSON_BODY" | jq '.data.data'
-  else
-    echo "$JSON_BODY" | grep -o '"data":{"data":{[^}]*}' || echo "$JSON_BODY"
-  fi
-  echo "-------------------------------------------"
-  echo ""
-  read -p "Do you want to UPDATE these values? (y/n): " USER_CHOICE
-  if [[ "$USER_CHOICE" == "y" || "$USER_CHOICE" == "Y" ]]; then DO_WRITE=true; fi
-
-elif [ "$HTTP_STATUS" -eq 404 ]; then
-  echo ""
-  echo "⚠️ Secret '$SECRET_NAME' does not exist yet."
-  read -p "Do you want to CREATE it now? (y/n): " USER_CHOICE
-  if [[ "$USER_CHOICE" == "y" || "$USER_CHOICE" == "Y" ]]; then DO_WRITE=true; fi
-
-else
-  echo "❌ Error reading secret. HTTP Status: $HTTP_STATUS"
-  exit 1
-fi
-
-# 7. The Write & Verify Execution Block
-if [ "$DO_WRITE" = true ]; then
-  echo ""
-  read -p "Please provide the JSON payload file name (e.g., data.json): " JSON_FILE
-  
-  if [ ! -f "$JSON_FILE" ]; then
-    echo "❌ Error: File '$JSON_FILE' not found in this directory!"
-    exit 1
-  fi
-  
-  echo "Writing data to Vault..."
-  WRITE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X 'POST' \
-    "$VAULT_ADDR/v1/secrets/kv_v2/wsit/data/$TARGET_NS/$SECRET_NAME" \
-    -H "X-Vault-Token: $VAULT_TOKEN" \
-    -H "X-Vault-Namespace: $VAULT_NS" \
-    -H 'Content-Type: application/json' \
-    -d "@$JSON_FILE")
-    
-  if [ "$WRITE_STATUS" -eq 200 ]; then
-    echo "✅ Success!"
-    echo ""
-    echo "-------------------------------------------"
-    echo " 🔐 CONFIRMED VALUES IN VAULT:"
-    echo "-------------------------------------------"
-    NEW_READ=$(curl -s -X 'GET' \
-      "$VAULT_ADDR/v1/secrets/kv_v2/wsit/data/$TARGET_NS/$SECRET_NAME" \
-      -H "X-Vault-Token: $VAULT_TOKEN" \
-      -H "X-Vault-Namespace: $VAULT_NS")
-      
-    if command -v jq &> /dev/null; then
-      echo "$NEW_READ" | jq '.data.data'
-    else
-      echo "$NEW_READ" | grep -o '"data":{"data":{[^}]*}' || echo "$NEW_READ"
-    fi
-    echo "-------------------------------------------"
-  else
-    echo "❌ Error: Failed to write secret. HTTP Status: $WRITE_STATUS"
-    exit 1
-  fi
-else
-  echo "Exiting without making changes."
-fi
+After creating the documentation, summarize what you created and any remaining gaps.
