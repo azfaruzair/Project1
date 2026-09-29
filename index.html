@@ -1,5 +1,33 @@
-this is an index file.
-Here kakaasldsmksmmdmds
-ajkskadkadkadsmdksamk
+Now audit the documentation you created against the actual PayOS source code.
 
+Act as a strict reviewer who did not write the documentation.
 
+Look for:
+
+- incorrect API mappings
+- incorrect feature relationships
+- missing major components
+- incorrect repository dependencies
+- incorrect data flows
+- missing enrichment/aggregation
+- missing shared APIs
+- missing shared library dependencies
+- contradictions between documents
+- assumptions presented as facts
+
+Verify important relationships against the actual implementation.
+
+Fix the documentation where necessary.
+
+Do not modify application source code.
+
+Finally, test whether the documentation is sufficient for an AI coding assistant to answer questions such as:
+
+- Where is the Events page implemented?
+- Which API feeds it?
+- Where is that data enriched?
+- Where does the data originate?
+- Which other pages use the same API?
+- What files should I inspect to debug this feature?
+
+Report anything that the documentation still does not make clear.
