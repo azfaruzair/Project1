@@ -1,37 +1,22 @@
-I want to create a durable architecture/knowledge map of the entire PayOS ecosystem for future AI-assisted development and debugging.
+Before implementing anything, determine how Claude Code Skills are currently supported in this environment.
 
-Repositories:
+I want to create a project-local skill called:
 
-- "payos-ui" — Vue.js frontend
-- "pol-sms-payos-ui" — backend
-- "pol-sms-payos-ui-agent" — Kubernetes/data collection agent
-- "pol-lib-payos-ui" — shared PayOS UI library
+"payos-doc-refresh"
 
-Before creating any documentation, thoroughly inspect these repositories and understand how they work together.
+The skill will maintain the existing PayOS architecture documentation under "docs/".
 
-For now, DO NOT modify application code and DO NOT create the final documentation yet.
+First:
 
-Instead, perform an architecture discovery exercise.
+1. Determine the correct project-local Skill directory and file structure.
+2. Determine how a Skill is invoked.
+3. Determine what metadata/frontmatter is required.
+4. Determine whether Skills can reference additional files/scripts.
+5. Determine how Skills should access Git and the local repositories.
+6. Identify any relevant existing Skill examples available in this environment.
 
-I want you to determine:
+Do not create or modify anything yet.
 
-1. What are the major components and responsibilities?
-2. How do the four repositories communicate?
-3. What are the major UI features/pages and their relationships?
-4. What APIs exist, and which UI features consume each API?
-5. Which APIs are reused by multiple pages?
-6. Where does aggregation/enrichment/transformation happen?
-7. How does data flow from Kubernetes/Kafka/other sources → UI Agent → backend → frontend?
-8. What important shared models, utilities and logic exist in "pol-lib-payos-ui"?
-9. What are the important cross-feature and cross-repository dependencies?
-10. Where would a developer start investigating a bug in each major feature?
+Explain the recommended structure for "payos-doc-refresh" and what files we should create.
 
-Do not assume that one page corresponds to one API. Explicitly identify cases where existing APIs are reused and the frontend derives multiple views from the same data.
-
-Inspect the actual implementation and verify relationships from source code.
-
-Do not guess. If something is unclear, mark it as NEEDS VERIFICATION.
-
-At the end, give me your discovered architecture as a structured outline and identify anything you think requires deeper investigation before we document it.
-
-Do not create or modify application source code.
+Keep the solution specific to Claude Code and this PayOS workspace.
